@@ -114,7 +114,7 @@ class QAST::MASTRegexCompiler {
             call($method, [ $Arg::obj ], :result($cur), $self )
         ];
 
-        my int $has_cursor_type := $node.has_cursor_type();
+        my int $has_cursor_type := 0; #$node.has_cursor_type();
         my $*cursor_type;
         if $has_cursor_type {
             $*cursor_type := $node.cursor_type();
