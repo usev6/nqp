@@ -229,7 +229,8 @@ role NQPCursorRole is export {
         $!match  := nqp::null();
         $!cstack := [] unless nqp::defined($!cstack);
         nqp::push($!cstack, $capture);
-        nqp::bindattr($capture, $?CLASS, '$!name', $name);
+        my $class := nqp::getattr($!shared, ParseShared, '$!CUR_CLASS');
+        nqp::bindattr($capture, $class, '$!name', $name);
         nqp::push_i($!bstack, 0);
         nqp::push_i($!bstack, $!pos);
         nqp::push_i($!bstack, 0);
@@ -321,8 +322,12 @@ role NQPCursorRole is export {
         while @fates {
             $rxname := nqp::atpos(@rxfate, nqp::pop_i(@fates));
             #nqp::say("invoking $rxname");
+            
             $cur := self."$rxname"();
-            @fates := @EMPTY if nqp::getattr_i($cur, $?CLASS, '$!pos') >= 0;
+            
+            my $shared := nqp::getattr($cur, $?CLASS, '$!shared');
+            my $class := nqp::getattr($shared, ParseShared, '$!CUR_CLASS');
+            @fates := @EMPTY if nqp::getattr_i($cur, $class, '$!pos') >= 0;
         }
         $cur // nqp::getattr($shared, ParseShared, '$!fail_cursor');
     }
