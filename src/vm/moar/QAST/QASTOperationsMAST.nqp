@@ -2401,6 +2401,7 @@ QAST::MASTOperations.add_core_moarop_mapping('setmethcache', 'setmethcache', 0, 
 QAST::MASTOperations.add_core_moarop_mapping('setmethcacheauth', 'setmethcacheauth', 0, :decont(0));
 QAST::MASTOperations.add_core_moarop_mapping('settypecache', 'settypecache', 0, :decont(0));
 QAST::MASTOperations.add_core_moarop_mapping('settypecheckmode', 'settypecheckmode', 0, :decont(0));
+QAST::MASTOperations.add_core_moarop_mapping('settypefinalize', 'settypefinalize', 0, :decont(0));
 QAST::MASTOperations.add_core_moarop_mapping('isinvokable', 'isinvokable');
 QAST::MASTOperations.add_core_moarop_mapping('setinvokespec', 'setinvokespec', 0, :decont(0));
 QAST::MASTOperations.add_core_moarop_mapping('setmultispec', 'setmultispec', 0, :decont(0));
@@ -2589,6 +2590,9 @@ QAST::MASTOperations.add_core_moarop_mapping('continuationinvoke', 'continuation
 # MoarVM-specific profiling ops.
 QAST::MASTOperations.add_core_moarop_mapping('mvmstartprofile', 'startprofile', 0);
 QAST::MASTOperations.add_core_moarop_mapping('mvmendprofile', 'endprofile');
+
+# MoarVM-specific GC ops
+QAST::MASTOperations.add_core_moarop_mapping('force_gc', 'force_gc');
 
 sub resolve_condition_op($kind, $negated) {
     return $negated ??

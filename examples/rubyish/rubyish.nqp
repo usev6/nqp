@@ -57,8 +57,9 @@ grammar Rubyish::Grammar is HLL::Grammar {
         :my $*CLASS_BLOCK := $*CUR_BLOCK;
         :my $*IN_TEMPLATE := 0;
         :my $*IN_PARENS   := 0;
-        :my %*SYM;
-        :my %*CLASS_SYMS;
+        :my %*SYM;                # symbols in current scope
+        :my %*SYM-GBL;            # globals and package variables
+        :my %*SYM-CLASS;          # class-inherited methods
 
         ^ ~ $ <stmtlist>
             || <.panic('Syntax error')>
@@ -93,7 +94,13 @@ grammar Rubyish::Grammar is HLL::Grammar {
         :my $*CUR_BLOCK := QAST::Block.new(QAST::Stmts.new());
         <operation> {
             $*DEF := ~$<operation>;
-            %*SYM{$*DEF} := $*IN_CLASS ?? 'method' !! 'func';
+            if $*IN_CLASS {
+                %*SYM{$*DEF} := 'method';
+                %*SYM<self> := 'var';
+            }
+            else {
+                %*SYM{$*DEF} := 'func';
+            }
         }
         ['(' ~ ')' <signature>?]? <separator>?
         <stmtlist>
@@ -130,7 +137,7 @@ grammar Rubyish::Grammar is HLL::Grammar {
         [ '<' <super=.ident> { inherit-syms(~$<super>) } ]?
         <separator>
         <stmtlist> {
-            %*CLASS_SYMS{~$<ident>} := %*SYM;
+            %*SYM-CLASS{~$<ident>} := %*SYM;
         }
     }
 
@@ -203,9 +210,12 @@ grammar Rubyish::Grammar is HLL::Grammar {
     token var {
         :my $*MAYBE_DECL := 0;
         \+?
-        [$<sigil>=[ \$ | \@ ] | <pkg=.ident>'::'<?before <[A..Z]>> | <!keyword> ]
-        <ident><!before [\!|\?|<hs>\(]>
-        [ <?before <hs> <bind-op> { $*MAYBE_DECL := 1 }> || <?> ]
+        $<var>=[[$<sigil>=[ \$ | \@ ] | <pkg=.ident>'::'<?before <[A..Z]>> | <!keyword> ] <ident>]
+        <!before [\!|\?|<hs>\(]>
+        [  <?before <hs> <bind-op> { $*MAYBE_DECL := 1 }>
+        || <?{ variable(~$<var>) || ~$<sigil> eq '@' }>
+        || <!{ callable(~$<var>) }> <.panic("undeclared variable: $<var>")>
+        ]
     }
 
     token term:sym<var>   { <var> }
@@ -445,13 +455,19 @@ grammar Rubyish::Grammar is HLL::Grammar {
 
     # Functions
     sub callable($op) {
-       my $type := %*SYM{$op} || (%builtins{$op} && 'func');
+       my $type := %*SYM{$op} // (%builtins{$op} && 'func');
 
        $type && ($type eq 'func' || $type eq 'method');
     }
 
+    sub variable($op) {
+       my $type := %*SYM{$op} // %*SYM-GBL{$op};
+
+       $type && ($type eq 'var');
+    }
+
     sub inherit-syms($class) {
-        if my %syms := %*CLASS_SYMS{$class} {
+        if my %syms := %*SYM-CLASS{$class} {
             %*SYM{$_} := %syms{$_}
                 for %syms;
         }
@@ -468,10 +484,8 @@ class Rubyish::Actions is HLL::Actions {
     method stmtlist($/) {
         my $stmts := QAST::Stmts.new( :node($/) );
 
-        if $<stmt> {
-            $stmts.push($_.ast)
-                for $<stmt>;
-        }
+        $stmts.push($_.ast)
+            for @<stmt>;
 
         make $stmts;
     }
@@ -581,16 +595,13 @@ class Rubyish::Actions is HLL::Actions {
         make $<call-args>.ast;
     }
 
-    my $tmpsym := 0;
-
     method term:sym<new>($/) {
 
-        # seems a bit hacky
-        my $tmp-sym := '$new' ~ (++$tmpsym) ~ '$';
+        my $tmp-obj := '$new-obj$';
 
         my $init-call := QAST::Op.new( :op<callmethod>,
                                        :name<initialize>,
-                                       QAST::Var.new( :name($tmp-sym), :scope<lexical> )
+                                       QAST::Var.new( :name($tmp-obj), :scope<lexical> )
             );
 
         if $<call-args> {
@@ -598,11 +609,25 @@ class Rubyish::Actions is HLL::Actions {
                 for $<call-args>.ast;
         }
 
-        make QAST::Stmt.new(
+        my $init-block := QAST::Block.new( QAST::Stmts.new(
+
+            # pseudo-code:
+            #
+            # def new(*call-args)
+            #     $new-obj$ = Class.new;
+            #     if call-args then
+            #        # always try to call initialize, when new has arguments
+            #        $new-obj$.initialize(call-args)
+            #     else
+            #        $new-obj$.initialize() \
+            #           if $new-obj$.can('initialize')
+            #     end
+            #     return $new-obj$
+            # end
 
             # create the new object
             QAST::Op.new( :op('bind'),
-                          QAST::Var.new( :name($tmp-sym), :scope<lexical>, :decl<var>),
+                          QAST::Var.new( :name($tmp-obj), :scope<lexical>, :decl<var>),
                           QAST::Op.new(
                               :op('create'),
                               QAST::Var.new( :name('::' ~ ~$<ident>), :scope('lexical') )
@@ -614,15 +639,18 @@ class Rubyish::Actions is HLL::Actions {
              ?? $init-call
              !! QAST::Op.new( :op<if>,
                               QAST::Op.new( :op<can>,
-                                            QAST::Var.new( :name($tmp-sym), :scope<lexical> ),
+                                            QAST::Var.new( :name($tmp-obj), :scope<lexical> ),
                                             QAST::SVal.new( :value<initialize> )),
                               $init-call,
              )
             ),
 
             # return the new object
-            QAST::Var.new( :name($tmp-sym), :scope<lexical> ),
-            );
+            QAST::Var.new( :name($tmp-obj), :scope<lexical> ),
+        ));
+
+        $init-block.blocktype('immediate');
+        make $init-block;
     }
 
     method var($/) {
@@ -658,6 +686,9 @@ class Rubyish::Actions is HLL::Actions {
 
                 if $sigil eq '$' || $ns {
                     $block := $*TOP_BLOCK;
+                    %*SYM-GBL{$name} := 'var';
+                    %*SYM{~$<ident>} := 'var'
+                        if $ns;
                 }
                 elsif !$sigil {
                     $block := $*CUR_BLOCK;
@@ -730,10 +761,8 @@ class Rubyish::Actions is HLL::Actions {
     method signature($/) {
         my @params;
 
-        if $<param> {
-            @params.push($_.ast)
-                for $<param>;
-        }
+        @params.push($_.ast)
+            for @<param>;
 
         if $<slurpy> {
             @params.push($<slurpy>[0].ast);
@@ -746,8 +775,13 @@ class Rubyish::Actions is HLL::Actions {
         }
 
         for @params {
-            $*CUR_BLOCK[0].push($_);
+            $*CUR_BLOCK[0].push($_) unless $_.named;
             $*CUR_BLOCK.symbol($_.name, :declared(1));
+         }
+
+         # nqp #179 named arguments need to follow positional parameters
+         for @params {
+            $*CUR_BLOCK[0].push($_) if $_.named;
          }
     }
 
