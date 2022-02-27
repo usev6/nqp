@@ -3759,37 +3759,37 @@ public final class Ops {
             ExceptionHandling.dieInternal(tc, "Cannot assign to an immutable value");
         return cont;
     }
-    public static SixModelObject assign_i(SixModelObject cont, long value, ThreadContext tc) {
+    public static long assign_i(SixModelObject cont, long value, ThreadContext tc) {
         ContainerSpec cs = cont.st.ContainerSpec;
         if (cs != null)
             cs.store_i(tc, cont, value);
         else
             ExceptionHandling.dieInternal(tc, "Cannot assign to an immutable value");
-        return cont;
+        return value;
     }
-    public static SixModelObject assign_u(SixModelObject cont, long value, ThreadContext tc) {
+    public static long assign_u(SixModelObject cont, long value, ThreadContext tc) {
         ContainerSpec cs = cont.st.ContainerSpec;
         if (cs != null)
             cs.store_i(tc, cont, value); /* FIXME Need a store_u */
         else
             ExceptionHandling.dieInternal(tc, "Cannot assign to an immutable value");
-        return cont;
+        return value;
     }
-    public static SixModelObject assign_n(SixModelObject cont, double value, ThreadContext tc) {
+    public static double assign_n(SixModelObject cont, double value, ThreadContext tc) {
         ContainerSpec cs = cont.st.ContainerSpec;
         if (cs != null)
             cs.store_n(tc, cont, value);
         else
             ExceptionHandling.dieInternal(tc, "Cannot assign to an immutable value");
-        return cont;
+        return value;
     }
-    public static SixModelObject assign_s(SixModelObject cont, String value, ThreadContext tc) {
+    public static String assign_s(SixModelObject cont, String value, ThreadContext tc) {
         ContainerSpec cs = cont.st.ContainerSpec;
         if (cs != null)
             cs.store_s(tc, cont, value);
         else
             ExceptionHandling.dieInternal(tc, "Cannot assign to an immutable value");
-        return cont;
+        return value;
     }
     public static SixModelObject assignunchecked(SixModelObject cont, SixModelObject value, ThreadContext tc) {
         ContainerSpec cs = cont.st.ContainerSpec;
